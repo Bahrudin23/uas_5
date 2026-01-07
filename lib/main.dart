@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
-import 'core/theme.dart';
-import 'pages/home_page.dart';
+import 'screens/home_screen.dart';
 
 void main() {
-  runApp(const MathDriveApp());
+  runApp(const MobilMathematicsApp());
 }
 
-class MathDriveApp extends StatelessWidget {
-  const MathDriveApp({super.key});
+class MobilMathematicsApp extends StatelessWidget {
+  const MobilMathematicsApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: appTheme,
-      home: const HomePage(),
+      home: HomeScreen(),
     );
   }
 }
