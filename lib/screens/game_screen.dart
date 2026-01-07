@@ -19,10 +19,21 @@ import '../widgets/tunnel_animation.dart';
 
 import 'difficulty_screen.dart';
 import 'home_screen.dart' hide Difficulty;
+import 'home_screen.dart' show ControlMode;
+//import 'package:sensors_plus/sensors_plus.dart';
+//import 'dart:async';
+
 
 class GameScreen extends StatefulWidget {
   final Difficulty difficulty;
-  const GameScreen({super.key, required this.difficulty});
+  final ControlMode controlMode;
+
+  const GameScreen({
+    super.key,
+    required this.difficulty,
+    required this.controlMode,
+  });
+
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -30,7 +41,6 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen>
     with TickerProviderStateMixin {
-
   int score = 0;
   int life = 3;
 
@@ -38,11 +48,13 @@ class _GameScreenState extends State<GameScreen>
   int selectedLane = 1;
   int correctLane = 0;
 
-  late int maxTime;
+  List<int> answers = [];
   String question = "";
 
   late AnimationController tunnelController;
   late AnimationController shakeController;
+
+  //StreamSubscription<AccelerometerEvent>? gyroSub;
 
   bool explodeTunnel = false;
   bool isGameOver = false;
@@ -51,15 +63,24 @@ class _GameScreenState extends State<GameScreen>
   final bgm = AudioPlayer();
   final sfx = AudioPlayer();
 
+  Future<void> startBgm() async {
+    if (audioStarted) return;
+    audioStarted = true;
+    await bgm.setReleaseMode(ReleaseMode.loop);
+    await bgm.play(AssetSource("audio/music_bg.mp3"));
+  }
+
   @override
   void initState() {
     super.initState();
 
-    maxTime = widget.difficulty == Difficulty.sulit ? 10 : 15;
+    startBgm();
 
     tunnelController = AnimationController(
       vsync: this,
-      duration: Duration(seconds: maxTime),
+      duration: Duration(
+        seconds: widget.difficulty == Difficulty.sulit ? 10 : 15,
+      ),
     );
 
     shakeController = AnimationController(
@@ -75,19 +96,26 @@ class _GameScreenState extends State<GameScreen>
       }
     });
 
+    // BISA DIMATIKAN JIKA TIDAK PERLU GYRO
+    // if (widget.controlMode == ControlMode.gyro) {
+    //  gyroSub = accelerometerEvents.listen((event) {
+    //    if (event.x > 2 && selectedLane > 0) {
+    //      setState(() => selectedLane--);
+    //    } else if (event.x < -2 && selectedLane < laneCount - 1) {
+    //      setState(() => selectedLane++);
+    //    }
+    //  });
+    //}
+    //
+
     generateQuestion();
     startRound();
   }
 
-  Future<void> startAudioIfNeeded() async {
-    if (audioStarted) return;
-    audioStarted = true;
-
-    await bgm.setReleaseMode(ReleaseMode.loop);
-    await bgm.play(AssetSource("audio/music_bg.mp3"));
-  }
-
   void startRound() {
+    //INI JUGA UNTUK MEMATIKAN GYRO
+    //gyroSub?.cancel();
+    //
     if (isGameOver) return;
     explodeTunnel = false;
     tunnelController.forward(from: 0);
@@ -98,17 +126,33 @@ class _GameScreenState extends State<GameScreen>
     int a = rnd.nextInt(10) + 1;
     int b = rnd.nextInt(10) + 1;
 
+    int result;
+
     if (widget.difficulty == Difficulty.mudah) {
       question = "$a + $b";
+      result = a + b;
     } else if (widget.difficulty == Difficulty.normal) {
       question = "$a × $b";
+      result = a * b;
     } else {
       final ops = ["+", "-", "×"];
       final op = ops[rnd.nextInt(3)];
       question = "$a $op $b";
+      if (op == "+") {
+        result = a + b;
+      } else if (op == "-") {
+        result = a - b;
+      } else {
+        result = a * b;
+      }
     }
 
     correctLane = rnd.nextInt(laneCount);
+
+    answers = List.generate(laneCount, (i) {
+      if (i == correctLane) return result;
+      return result + rnd.nextInt(9) + 1;
+    });
   }
 
   void checkAnswer() async {
@@ -126,15 +170,12 @@ class _GameScreenState extends State<GameScreen>
       if (life <= 0) {
         isGameOver = true;
         tunnelController.stop();
-        shakeController.stop();
-
         await sfx.play(AssetSource("audio/meledak.mp3"));
         await ScoreStorage.saveScore(
           "Player",
           score,
           widget.difficulty.name,
         );
-
         if (!mounted) return;
         showGameOver();
         return;
@@ -147,7 +188,6 @@ class _GameScreenState extends State<GameScreen>
 
   void showGameOver() {
     bgm.stop();
-
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -160,19 +200,23 @@ class _GameScreenState extends State<GameScreen>
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      GameScreen(difficulty: widget.difficulty),
+                  builder: (_) => GameScreen(
+                    difficulty: widget.difficulty,
+                    controlMode: widget.controlMode,
+                  ),
                 ),
               );
             },
-            child: const Text("Mulai Kembali"),
+            child: const Text("Mulai Lagi"),
           ),
           TextButton(
             onPressed: () {
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const DifficultyScreen(),
+                  builder: (_) => DifficultyScreen(
+                    controlMode: widget.controlMode,
+                  ),
                 ),
               );
             },
@@ -209,65 +253,101 @@ class _GameScreenState extends State<GameScreen>
     final mode = getTimeMode();
 
     return Scaffold(
-      body: GestureDetector(
-        onTap: startAudioIfNeeded,
-        onHorizontalDragUpdate: (d) {
-          if (d.delta.dx > 8 && selectedLane < laneCount - 1) {
-            setState(() => selectedLane++);
-          } else if (d.delta.dx < -8 && selectedLane > 0) {
-            setState(() => selectedLane--);
-          }
-        },
-        child: Stack(
-          children: [
-            SkyAnimation(mode: mode),
-            if (mode == TimeMode.day) const SunAnimation(),
-            if (mode == TimeMode.night) const MoonAnimation(),
+      body: Stack(
+        children: [
+          IgnorePointer(
+            child: Stack(
+              children: [
+                SkyAnimation(mode: mode),
+                if (mode == TimeMode.day) const SunAnimation(),
+                if (mode == TimeMode.night) const MoonAnimation(),
+                const RoadAnimation(),
+                const GroundAnimation(),
+                StreetLampAnimation(mode: mode),
+                TreeAnimation(left: 20),
+                TreeAnimation(left: 300),
 
-            const RoadAnimation(),
-            const GroundAnimation(),
-            StreetLampAnimation(mode: mode),
+                AnimatedBuilder(
+                  animation: tunnelController,
+                  builder: (_, __) {
+                    return TunnelAnimation(
+                      progress: tunnelController.value,
+                      answers: answers,
+                      explode: explodeTunnel,
+                    );
+                  },
+                ),
 
-            TreeAnimation(left: 20),
-            TreeAnimation(left: 300),
+                CloudAnimation(
+                  question: question,
+                  progress: 1 - tunnelController.value,
+                ),
 
-            AnimatedBuilder(
-              animation: tunnelController,
-              builder: (_, __) {
-                return TunnelAnimation(
-                  progress: tunnelController.value,
-                  correctLane: correctLane,
-                  explode: explodeTunnel,
-                );
+                CarAnimation(
+                  lane: selectedLane,
+                  life: life,
+                  shake: shakeController,
+                ),
+
+                LifeAnimation(life: life),
+
+                Positioned(
+                  left: 16,
+                  top: 16,
+                  child: Text(
+                    "Skor $score",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          if (widget.controlMode == ControlMode.sentuh)
+            Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerMove: (event) {
+                if (event.delta.dx > 8 && selectedLane < laneCount - 1) {
+                  setState(() => selectedLane++);
+                } else if (event.delta.dx < -8 && selectedLane > 0) {
+                  setState(() => selectedLane--);
+                }
               },
             ),
 
-            CloudAnimation(
-              question: question,
-              progress: 1 - tunnelController.value,
-            ),
-
-            CarAnimation(
-              lane: selectedLane,
-              life: life,
-              shake: shakeController,
-            ),
-
-            LifeAnimation(life: life),
-
+          if (widget.controlMode == ControlMode.tombol)
             Positioned(
-              left: 16,
-              top: 16,
-              child: Text(
-                "Skor $score",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                ),
+              bottom: 20,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_left, size: 48),
+                    color: Colors.white,
+                    onPressed: () {
+                      if (selectedLane > 0) {
+                        setState(() => selectedLane--);
+                      }
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.arrow_right, size: 48),
+                    color: Colors.white,
+                    onPressed: () {
+                      if (selectedLane < laneCount - 1) {
+                        setState(() => selectedLane++);
+                      }
+                    },
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'game_screen.dart';
+import 'home_screen.dart' show ControlMode;
 
 enum Difficulty { mudah, normal, sulit }
 
 class DifficultyScreen extends StatelessWidget {
-  const DifficultyScreen({super.key});
+  final ControlMode controlMode;
+
+  const DifficultyScreen({
+    super.key,
+    required this.controlMode,
+  });
+
 
   void showConfirm(BuildContext context, Difficulty diff) {
     String title = "";
@@ -62,7 +69,10 @@ class DifficultyScreen extends StatelessWidget {
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => GameScreen(difficulty: diff),
+                  builder: (_) => GameScreen(
+                    difficulty: diff,
+                    controlMode: controlMode,
+                  ),
                 ),
               );
             },

@@ -1,63 +1,57 @@
+// tunnel_animation.dart
 import 'package:flutter/material.dart';
 
 class TunnelAnimation extends StatelessWidget {
   final double progress;
-  final int correctLane;
+  final List<int> answers;
   final bool explode;
 
   const TunnelAnimation({
     super.key,
     required this.progress,
-    required this.correctLane,
+    required this.answers,
     required this.explode,
   });
 
+  double laneX(int index, BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final laneWidth = width / answers.length;
+    return laneWidth * index + laneWidth / 2 - 12;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.of(context).size.width / 4;
-    final y = MediaQuery.of(context).size.height * progress;
+    final tunnelY = 160 + progress * 220;
 
-    return Positioned(
-      top: y,
-      left: 0,
-      right: 0,
-      child: Row(
-        children: List.generate(4, (i) {
-          return SizedBox(
-            width: w,
-            height: 80,
-            child: CustomPaint(
-              painter: _TunnelPainter(
-                correct: i == correctLane,
-                explode: explode && i != correctLane,
-              ),
+    return Stack(
+      children: [
+        for (int i = 0; i < answers.length; i++)
+          Positioned(
+            top: tunnelY,
+            left: laneX(i, context),
+            child: Column(
+              children: [
+                Text(
+                  answers[i].toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  width: 70,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: explode ? Colors.red : Colors.black,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ],
             ),
-          );
-        }),
-      ),
+          ),
+      ],
     );
   }
-}
-
-class _TunnelPainter extends CustomPainter {
-  final bool correct;
-  final bool explode;
-
-  _TunnelPainter({required this.correct, required this.explode});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final body = Paint()
-      ..color = explode
-          ? Colors.orange
-          : (correct ? Colors.green : Colors.red);
-
-    canvas.drawRect(
-      Rect.fromLTWH(10, 10, size.width - 20, size.height - 20),
-      body,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_) => true;
 }

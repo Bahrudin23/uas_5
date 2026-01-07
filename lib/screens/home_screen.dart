@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'difficulty_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+
 enum ControlMode { sentuh, tombol, gyro }
 enum Difficulty { mudah, normal, sulit }
 
@@ -189,7 +190,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const DifficultyScreen(),
+                    builder: (_) => DifficultyScreen(controlMode: controlMode,
+                    ),
                   ),
                 );
               },

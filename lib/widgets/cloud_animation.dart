@@ -22,13 +22,30 @@ class CloudAnimation extends StatelessWidget {
             painter: _CloudPainter(),
           ),
           const SizedBox(height: 6),
-          Text(
-            question,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          )
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Text(
+                question,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  foreground: Paint()
+                    ..style = PaintingStyle.stroke
+                    ..strokeWidth = 5
+                    ..color = Colors.black,
+                ),
+              ),
+              Text(
+                question,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
