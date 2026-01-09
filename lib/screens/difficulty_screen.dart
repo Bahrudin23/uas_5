@@ -6,10 +6,12 @@ enum Difficulty { mudah, normal, sulit }
 
 class DifficultyScreen extends StatelessWidget {
   final ControlMode controlMode;
+  final String playerName;
 
   const DifficultyScreen({
     super.key,
     required this.controlMode,
+    required this.playerName,
   });
 
 
@@ -20,15 +22,15 @@ class DifficultyScreen extends StatelessWidget {
     if (diff == Difficulty.mudah) {
       title = "Mudah";
       desc =
-      "Waktu berpikir 15 detik\nSoal penjumlahan dan pengurangan";
+      "Waktu berpikir 5 detik\nSoal penjumlahan dan pengurangan";
     } else if (diff == Difficulty.normal) {
       title = "Normal";
       desc =
-      "Waktu berpikir 15 detik\nSoal perkalian dan pembagian";
+      "Waktu berpikir 5 detik\nSoal perkalian dan pembagian";
     } else {
       title = "Sulit";
       desc =
-      "Waktu berpikir 10 detik\nSoal penjumlahan, pengurangan, perkalian, dan pembagian";
+      "Waktu berpikir 3 detik\nSoal penjumlahan, pengurangan, perkalian, dan pembagian";
     }
 
     showDialog(
@@ -66,12 +68,13 @@ class DifficultyScreen extends StatelessWidget {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pushReplacement(
+              Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) => GameScreen(
                     difficulty: diff,
                     controlMode: controlMode,
+                    playerName: playerName,
                   ),
                 ),
               );

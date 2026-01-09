@@ -1,6 +1,10 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+//aktifkan untuk gyro
+import 'package:sensors_plus/sensors_plus.dart';
+import 'dart:async';
+//
 
 import '../models/time_mode.dart';
 import '../models/score_storage.dart';
@@ -20,18 +24,18 @@ import '../widgets/tunnel_animation.dart';
 import 'difficulty_screen.dart';
 import 'home_screen.dart' hide Difficulty;
 import 'home_screen.dart' show ControlMode;
-//import 'package:sensors_plus/sensors_plus.dart';
-//import 'dart:async';
 
 
 class GameScreen extends StatefulWidget {
   final Difficulty difficulty;
   final ControlMode controlMode;
+  final String playerName;
 
   const GameScreen({
     super.key,
     required this.difficulty,
     required this.controlMode,
+    required this.playerName,
   });
 
 
@@ -44,6 +48,30 @@ class _GameScreenState extends State<GameScreen>
   int score = 0;
   int life = 3;
 
+  int get tunnelTimeLeft {
+    final totalSeconds =
+    widget.difficulty == Difficulty.sulit ? 3 : 5;
+
+    final progress = tunnelController.value;
+    final left = (totalSeconds * (1 - progress)).ceil();
+
+    return left < 0 ? 0 : left;
+  }
+
+  void startGyro() {
+    gyroSub?.cancel();
+
+    gyroSub = accelerometerEvents.listen((event) {
+      if (isGameOver) return;
+
+      if (event.x > 2 && selectedLane > 0) {
+        setState(() => selectedLane--);
+      } else if (event.x < -2 && selectedLane < laneCount - 1) {
+        setState(() => selectedLane++);
+      }
+    });
+  }
+
   final int laneCount = 4;
   int selectedLane = 1;
   int correctLane = 0;
@@ -54,11 +82,13 @@ class _GameScreenState extends State<GameScreen>
   late AnimationController tunnelController;
   late AnimationController shakeController;
 
-  //StreamSubscription<AccelerometerEvent>? gyroSub;
-
+  //aktifkan untuk gyro
+  StreamSubscription<AccelerometerEvent>? gyroSub;
+  //
   bool explodeTunnel = false;
   bool isGameOver = false;
   bool audioStarted = false;
+  bool dialogShown = false;
 
   final bgm = AudioPlayer();
   final sfx = AudioPlayer();
@@ -79,7 +109,7 @@ class _GameScreenState extends State<GameScreen>
     tunnelController = AnimationController(
       vsync: this,
       duration: Duration(
-        seconds: widget.difficulty == Difficulty.sulit ? 10 : 15,
+        seconds: widget.difficulty == Difficulty.sulit ? 3 : 5,
       ),
     );
 
@@ -92,33 +122,32 @@ class _GameScreenState extends State<GameScreen>
 
     tunnelController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        checkAnswer();
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (!mounted || isGameOver) return;
+          checkAnswer();
+        });
       }
     });
 
-    // BISA DIMATIKAN JIKA TIDAK PERLU GYRO
-    // if (widget.controlMode == ControlMode.gyro) {
-    //  gyroSub = accelerometerEvents.listen((event) {
-    //    if (event.x > 2 && selectedLane > 0) {
-    //      setState(() => selectedLane--);
-    //    } else if (event.x < -2 && selectedLane < laneCount - 1) {
-    //      setState(() => selectedLane++);
-    //    }
-    //  });
-    //}
-    //
+    if (widget.controlMode == ControlMode.gyro) {
+      startGyro();
+    }
 
     generateQuestion();
     startRound();
   }
 
   void startRound() {
-    //INI JUGA UNTUK MEMATIKAN GYRO
-    //gyroSub?.cancel();
-    //
     if (isGameOver) return;
+
     explodeTunnel = false;
-    tunnelController.forward(from: 0);
+    shakeController.stop();
+    shakeController.reset();
+
+    tunnelController.stop();
+    tunnelController.reset();
+
+    tunnelController.forward();
   }
 
   void generateQuestion() {
@@ -129,21 +158,43 @@ class _GameScreenState extends State<GameScreen>
     int result;
 
     if (widget.difficulty == Difficulty.mudah) {
-      question = "$a + $b";
-      result = a + b;
-    } else if (widget.difficulty == Difficulty.normal) {
-      question = "$a × $b";
-      result = a * b;
-    } else {
-      final ops = ["+", "-", "×"];
-      final op = ops[rnd.nextInt(3)];
-      question = "$a $op $b";
+      final ops = ["+", "-"];
+      final op = ops[rnd.nextInt(2)];
+
       if (op == "+") {
         result = a + b;
-      } else if (op == "-") {
+        question = "$a + $b";
+      } else {
         result = a - b;
+        question = "$a - $b";
+      }
+    } else if (widget.difficulty == Difficulty.normal) {
+      final ops = ["×", "÷"];
+      final op = ops[rnd.nextInt(2)];
+
+      if (op == "÷") {
+        result = a;
+        question = "${a * b} ÷ $b";
       } else {
         result = a * b;
+        question = "$a × $b";
+      }
+    } else {
+      final ops = ["+", "-", "×", "÷"];
+      final op = ops[rnd.nextInt(4)];
+
+      if (op == "+") {
+        result = a + b;
+        question = "$a + $b";
+      } else if (op == "-") {
+        result = a - b;
+        question = "$a - $b";
+      } else if (op == "×") {
+        result = a * b;
+        question = "$a × $b";
+      } else {
+        result = a;
+        question = "${a * b} ÷ $b";
       }
     }
 
@@ -159,30 +210,54 @@ class _GameScreenState extends State<GameScreen>
     if (isGameOver) return;
 
     if (selectedLane == correctLane) {
-      score += 20;
+      setState(() {
+        score += 20;
+      });
       await sfx.play(AssetSource("audio/benar.mp3"));
     } else {
-      life--;
-      explodeTunnel = true;
+      setState(() {
+        life--;
+        explodeTunnel = true;
+      });
+
       shakeController.forward(from: 0);
       await sfx.play(AssetSource("audio/menabrak.mp3"));
 
       if (life <= 0) {
         isGameOver = true;
-        tunnelController.stop();
+
+        tunnelController.stop(canceled: true);
+        shakeController.stop(canceled: true);
+        gyroSub?.cancel();
+
         await sfx.play(AssetSource("audio/meledak.mp3"));
-        await ScoreStorage.saveScore(
-          "Player",
-          score,
-          widget.difficulty.name,
-        );
-        if (!mounted) return;
-        showGameOver();
+        try {
+          await ScoreStorage.saveScore(
+            widget.playerName,
+            score,
+            widget.difficulty.name,
+          );
+        } catch (e) {
+          debugPrint('Save score failed: $e');
+        }
+
+        if (!dialogShown) {
+          dialogShown = true;
+
+          Future.microtask(() {
+            if (!mounted) return;
+            showGameOver();
+          });
+        }
         return;
       }
     }
 
-    generateQuestion();
+    if (isGameOver) return;
+
+    setState(() {
+      generateQuestion();
+    });
     startRound();
   }
 
@@ -203,6 +278,7 @@ class _GameScreenState extends State<GameScreen>
                   builder: (_) => GameScreen(
                     difficulty: widget.difficulty,
                     controlMode: widget.controlMode,
+                    playerName: widget.playerName,
                   ),
                 ),
               );
@@ -216,6 +292,7 @@ class _GameScreenState extends State<GameScreen>
                 MaterialPageRoute(
                   builder: (_) => DifficultyScreen(
                     controlMode: widget.controlMode,
+                    playerName: widget.playerName,
                   ),
                 ),
               );
@@ -241,6 +318,7 @@ class _GameScreenState extends State<GameScreen>
 
   @override
   void dispose() {
+    gyroSub?.cancel();
     tunnelController.dispose();
     shakeController.dispose();
     bgm.dispose();
@@ -270,10 +348,45 @@ class _GameScreenState extends State<GameScreen>
                 AnimatedBuilder(
                   animation: tunnelController,
                   builder: (_, __) {
-                    return TunnelAnimation(
-                      progress: tunnelController.value,
-                      answers: answers,
-                      explode: explodeTunnel,
+                    return Stack(
+                      children: [
+                        TunnelAnimation(
+                          progress: tunnelController.value,
+                          answers: answers,
+                          explode: explodeTunnel,
+                        ),
+                        Positioned(
+                          top: 200,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Text(
+                                  '$tunnelTimeLeft',
+                                  style: TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    foreground: Paint()
+                                      ..style = PaintingStyle.stroke
+                                      ..strokeWidth = 5
+                                      ..color = Colors.black,
+                                  ),
+                                ),
+                                Text(
+                                  '$tunnelTimeLeft',
+                                  style: const TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     );
                   },
                 ),
@@ -320,7 +433,7 @@ class _GameScreenState extends State<GameScreen>
 
           if (widget.controlMode == ControlMode.tombol)
             Positioned(
-              bottom: 20,
+              bottom: 200,
               left: 0,
               right: 0,
               child: Row(

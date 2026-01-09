@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'difficulty_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/score_storage.dart';
 
 
 enum ControlMode { sentuh, tombol, gyro }
@@ -18,21 +19,6 @@ class _HomeScreenState extends State<HomeScreen> {
   String playerName = "";
   ControlMode controlMode = ControlMode.sentuh;
 
-  final Map<Difficulty, List<Map<String, int>>> dummyLeaderboard = {
-    Difficulty.mudah: List.generate(
-      10,
-          (i) => {"Player${i + 1}": 300 - (i * 10)},
-    ),
-    Difficulty.normal: List.generate(
-      10,
-          (i) => {"Player${i + 1}": 250 - (i * 10)},
-    ),
-    Difficulty.sulit: List.generate(
-      10,
-          (i) => {"Player${i + 1}": 200 - (i * 10)},
-    ),
-  };
-
   @override
   void initState() {
     super.initState();
@@ -42,11 +28,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> loadPlayer() async {
     final prefs = await SharedPreferences.getInstance();
+    String? savedName = prefs.getString("player_name");
+
+    if (savedName == null ||
+        savedName.trim().isEmpty ||
+        savedName.toLowerCase() == "player") {
+      savedName = "Player${Random().nextInt(900) + 100}";
+      await prefs.setString("player_name", savedName);
+    }
+
     setState(() {
-      playerName = prefs.getString("player_name") ??
-          "Player${Random().nextInt(999)}";
+      playerName = savedName!;
     });
-    prefs.setString("player_name", playerName);
   }
 
   Future<void> loadControl() async {
@@ -77,9 +70,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isEmpty || name.toLowerCase() == "player") return;
+
               final prefs = await SharedPreferences.getInstance();
-              prefs.setString("player_name", controller.text);
-              setState(() => playerName = controller.text);
+              await prefs.setString("player_name", name);
+              setState(() => playerName = name);
               Navigator.pop(context);
             },
             child: const Text("Simpan"),
@@ -90,6 +86,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void showControlSetting() {
+    ControlMode tempMode = controlMode;
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -100,16 +98,25 @@ class _HomeScreenState extends State<HomeScreen> {
             return RadioListTile(
               title: Text(mode.name),
               value: mode,
-              groupValue: controlMode,
-              onChanged: (v) => saveControl(v!),
+              groupValue: tempMode,
+              onChanged: (v) {
+                tempMode = v!;
+              },
             );
           }).toList(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Tutup"),
-          )
+            child: const Text("Batal"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              saveControl(tempMode);
+              Navigator.pop(context);
+            },
+            child: const Text("Simpan"),
+          ),
         ],
       ),
     );
@@ -158,15 +165,33 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget leaderboardList(Difficulty diff) {
-    final data = dummyLeaderboard[diff]!;
-    return ListView.builder(
-      itemCount: data.length,
-      itemBuilder: (_, i) {
-        final entry = data[i].entries.first;
-        return ListTile(
-          leading: Text("${i + 1}"),
-          title: Text(entry.key),
-          trailing: Text(entry.value.toString()),
+    final field = diff.name;
+
+    return StreamBuilder(
+      stream: ScoreStorage.loadScores(field),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final docs = snapshot.data!.docs;
+
+        if (docs.isEmpty) {
+          return const Center(child: Text("Belum ada skor"));
+        }
+
+        return ListView.builder(
+          itemCount: docs.length,
+          itemBuilder: (_, i) {
+            final data = docs[i].data() as Map<String, dynamic>;
+            final score = data[field];
+
+            return ListTile(
+              leading: Text("${i + 1}"),
+              title: Text(data['name']),
+              trailing: Text(score.toString()),
+            );
+          },
         );
       },
     );
@@ -175,60 +200,64 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          SizedBox.expand(
-            child: Image.asset(
-              "assets/images/background.jpg",
-              fit: BoxFit.cover,
-            ),
-          ),
-
-          Center(
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => DifficultyScreen(controlMode: controlMode,
-                    ),
-                  ),
-                );
-              },
-              child: const Text("Mulai"),
-            ),
-          ),
-
-          Positioned(
-            left: 16,
-            bottom: 16,
-            child: GestureDetector(
-              onTap: editName,
-              child: Text(
-                playerName,
-                style: const TextStyle(color: Colors.white),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            SizedBox.expand(
+              child: Image.asset(
+                "assets/images/background.jpg",
+                fit: BoxFit.cover,
               ),
             ),
-          ),
 
-          Positioned(
-            left: 16,
-            top: 16,
-            child: IconButton(
-              icon: const Icon(Icons.settings, color: Colors.white),
-              onPressed: showControlSetting,
+            Center(
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => DifficultyScreen(
+                        controlMode: controlMode,
+                        playerName: playerName,
+                      ),
+                    ),
+                  );
+                },
+                child: const Text("Mulai"),
+              ),
             ),
-          ),
 
-          Positioned(
-            right: 16,
-            top: 16,
-            child: IconButton(
-              icon: const Icon(Icons.emoji_events, color: Colors.white),
-              onPressed: showLeaderboard,
+            Positioned(
+              left: 24,
+              bottom: 24,
+              child: GestureDetector(
+                onTap: editName,
+                child: Text(
+                  playerName,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
             ),
-          ),
-        ],
+
+            Positioned(
+              left: 24,
+              top: 24,
+              child: IconButton(
+                icon: const Icon(Icons.settings, color: Colors.white),
+                onPressed: showControlSetting,
+              ),
+            ),
+
+            Positioned(
+              right: 24,
+              top: 24,
+              child: IconButton(
+                icon: const Icon(Icons.emoji_events, color: Colors.white),
+                onPressed: showLeaderboard,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

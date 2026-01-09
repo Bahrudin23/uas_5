@@ -1,34 +1,40 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ScoreStorage {
-  static const _key = "global_scores";
+  static final _db = FirebaseFirestore.instance;
 
   static Future<void> saveScore(
       String name,
       int score,
       String difficulty,
       ) async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList(_key) ?? [];
+    final ref = _db.collection('leaderboard').doc(name);
+    final snap = await ref.get();
 
-    list.add(jsonEncode({
-      "name": name,
-      "score": score,
-      "difficulty": difficulty,
-      "time": DateTime.now().toIso8601String(),
-    }));
+    if (!snap.exists) {
+      await ref.set({
+        'name': name,
+        difficulty: score,
+      });
+      return;
+    }
 
-    await prefs.setStringList(_key, list);
+    final data = snap.data()!;
+    final oldScore = data[difficulty];
+
+    if (oldScore == null || score > oldScore) {
+      await ref.update({
+        difficulty: score,
+      });
+    }
   }
 
-  static Future<List<Map<String, dynamic>>> loadScores() async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList(_key) ?? [];
-
-    return list
-        .map((e) => jsonDecode(e) as Map<String, dynamic>)
-        .toList()
-      ..sort((a, b) => b["score"].compareTo(a["score"]));
+  static Stream<QuerySnapshot> loadScores(String difficulty) {
+    return _db
+        .collection('leaderboard')
+        .where(difficulty, isGreaterThan: 0)
+        .orderBy(difficulty, descending: true)
+        .limit(10)
+        .snapshots();
   }
 }
